@@ -205,3 +205,83 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# =============================================================================
+# DiffFE-Physics-Lab Specific
+# =============================================================================
+
+# Scientific data files
+data/
+*.h5
+*.hdf5
+*.nc
+*.netcdf
+*.xdmf
+*.xml
+*.pvd
+*.vtu
+*.vtk
+*.pvtu
+*.msh
+*.geo
+*.mesh
+*.node
+*.ele
+*.face
+*.edge
+
+# Cache and temporary directories
+.cache/
+cache/
+tmp/
+temp/
+checkpoints/
+*.ckpt
+*.checkpoint
+
+# Results and solutions
+results/
+output/
+solutions/
+*.sol
+*.result
+
+# Firedrake specific
+firedrake/
+.firedrake_cache/
+*.petscrc
+
+# JAX and PyTorch
+.jax_cache/
+*.pth
+*.pt
+*.pkl
+
+# Profiling and monitoring
+*.prof
+*.profile
+profiles/
+.prof/
+*.trace
+*.timeline
+
+# Experiment tracking
+wandb/
+mlruns/
+tensorboard_logs/
+
+# Configuration overrides
+config.local.*
+.env.local
+.env.production
+.env.development
+
+# Project specific directories
+benchmarks/results/
+benchmarks/profiles/
+examples/output/
+examples/data/
+tests/output/
+tests/temp/
+docs/source/api/
+docs/build/

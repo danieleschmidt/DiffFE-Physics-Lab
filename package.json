@@ -1,0 +1,100 @@
+{
+  "name": "diffhe-physics-lab",
+  "version": "1.0.0-dev",
+  "description": "Differentiable finite element framework for physics-informed machine learning",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "python -m src.examples.basic_example",
+    "test": "pytest tests/ -v",
+    "test:unit": "pytest tests/unit/ -v",
+    "test:integration": "pytest tests/integration/ -v",
+    "test:convergence": "pytest tests/convergence/ -v --slow",
+    "test:gpu": "pytest tests/ -v -m gpu",
+    "test:coverage": "pytest tests/ --cov=src --cov-report=html --cov-report=term",
+    "lint": "flake8 src/ tests/",
+    "lint:fix": "black src/ tests/ && isort src/ tests/",
+    "typecheck": "mypy src/",
+    "format": "black src/ tests/ examples/",
+    "format:check": "black --check src/ tests/ examples/",
+    "clean": "find . -type d -name '__pycache__' -exec rm -rf {} + && find . -name '*.pyc' -delete && rm -rf .pytest_cache htmlcov .coverage",
+    "build": "python setup.py sdist bdist_wheel",
+    "docs": "sphinx-build -b html docs/ docs/_build/html",
+    "docs:serve": "python -m http.server 8000 -d docs/_build/html",
+    "benchmark": "python benchmarks/run_benchmarks.py",
+    "profile": "python -m cProfile -o profile.stats src/examples/performance_test.py",
+    "security-check": "bandit -r src/",
+    "deps:update": "pip-tools compile --upgrade requirements.in",
+    "deps:sync": "pip-sync requirements.txt",
+    "precommit": "pre-commit run --all-files",
+    "validate": "npm run lint && npm run typecheck && npm run test:unit",
+    "ci": "npm run validate && npm run test:coverage && npm run security-check",
+    "release:patch": "bump2version patch",
+    "release:minor": "bump2version minor",
+    "release:major": "bump2version major"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/danieleschmidt/DiffFE-Physics-Lab.git"
+  },
+  "keywords": [
+    "finite-element",
+    "automatic-differentiation",
+    "physics-informed-ml",
+    "computational-physics",
+    "optimization",
+    "jax",
+    "pytorch",
+    "firedrake",
+    "pde-solver",
+    "inverse-problems"
+  ],
+  "author": "DiffFE-Physics-Lab Team",
+  "license": "BSD-3-Clause",
+  "bugs": {
+    "url": "https://github.com/danieleschmidt/DiffFE-Physics-Lab/issues"
+  },
+  "homepage": "https://github.com/danieleschmidt/DiffFE-Physics-Lab#readme",
+  "devDependencies": {},
+  "dependencies": {},
+  "engines": {
+    "python": ">=3.10"
+  },
+  "python": {
+    "dependencies": {
+      "required": [
+        "numpy>=1.21.0",
+        "scipy>=1.7.0",
+        "firedrake>=0.13.0",
+        "jax>=0.4.25",
+        "jaxlib>=0.4.25"
+      ],
+      "optional": {
+        "pytorch": ["torch>=2.4.0", "torchvision>=0.19.0"],
+        "optimization": ["optax>=0.1.0", "scikit-learn>=1.0.0"],
+        "data": ["h5py>=3.7.0", "netcdf4>=1.6.0", "xarray>=2022.3.0"],
+        "visualization": ["matplotlib>=3.5.0", "plotly>=5.0.0", "seaborn>=0.11.0"],
+        "development": [
+          "pytest>=7.0.0",
+          "pytest-cov>=4.0.0",
+          "black>=22.0.0",
+          "isort>=5.10.0",
+          "flake8>=5.0.0",
+          "mypy>=0.991",
+          "pre-commit>=2.20.0",
+          "bandit>=1.7.0"
+        ],
+        "docs": [
+          "sphinx>=5.0.0",
+          "sphinx-rtd-theme>=1.0.0",
+          "sphinxcontrib-bibtex>=2.5.0",
+          "nbsphinx>=0.8.0"
+        ],
+        "performance": [
+          "psutil>=5.9.0",
+          "memory-profiler>=0.60.0",
+          "line-profiler>=4.0.0"
+        ]
+      }
+    }
+  }
+}
