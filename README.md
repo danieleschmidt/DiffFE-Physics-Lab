@@ -389,7 +389,7 @@ mypy diffhe/
 ```bibtex
 @article{diffhe-physics-2025,
   title={Differentiable Finite Elements for Physics-Informed Machine Learning},
-  author={Your Name},
+  author={Daniel Schmidt},
   journal={arXiv preprint arXiv:2507.XXXXX},
   year={2025}
 }
