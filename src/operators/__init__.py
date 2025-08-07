@@ -3,10 +3,24 @@
 from .base import BaseOperator, register_operator, get_operator
 from .laplacian import laplacian, LaplacianOperator
 from .elasticity import elasticity, ElasticityOperator
-from .fluid import navier_stokes, NavierStokesOperator, incompressibility
-from .nonlinear import hyperelastic, HyperelasticOperator
-from .electromagnetic import maxwell, MaxwellOperator
-from .transport import advection, AdvectionOperator
+try:
+    from .fluid import navier_stokes, NavierStokesOperator, incompressibility
+    from .nonlinear import hyperelastic, HyperelasticOperator
+    from .electromagnetic import maxwell, MaxwellOperator
+    from .transport import advection, AdvectionOperator
+    HAS_ADVANCED_OPERATORS = True
+except ImportError:
+    HAS_ADVANCED_OPERATORS = False
+
+# Sentiment analysis operators
+from .sentiment import (
+    SentimentDiffusionOperator,
+    SentimentReactionOperator,
+    SentimentGradientOperator,
+    SentimentLaplacianOperator,
+    SentimentAdvectionOperator,
+    CompositeSentimentOperator
+)
 
 __all__ = [
     # Base functionality
@@ -14,20 +28,35 @@ __all__ = [
     "register_operator", 
     "get_operator",
     
-    # Operator functions
+    # Core operator functions
     "laplacian",
     "elasticity",
-    "navier_stokes",
-    "incompressibility", 
-    "hyperelastic",
-    "maxwell",
-    "advection",
     
-    # Operator classes
+    # Core operator classes
     "LaplacianOperator",
-    "ElasticityOperator", 
-    "NavierStokesOperator",
-    "HyperelasticOperator",
-    "MaxwellOperator",
-    "AdvectionOperator"
+    "ElasticityOperator",
+    
+    # Sentiment analysis operators
+    "SentimentDiffusionOperator",
+    "SentimentReactionOperator",
+    "SentimentGradientOperator",
+    "SentimentLaplacianOperator", 
+    "SentimentAdvectionOperator",
+    "CompositeSentimentOperator"
 ]
+
+if HAS_ADVANCED_OPERATORS:
+    __all__.extend([
+        # Advanced operator functions
+        "navier_stokes",
+        "incompressibility", 
+        "hyperelastic",
+        "maxwell",
+        "advection",
+        
+        # Advanced operator classes
+        "NavierStokesOperator",
+        "HyperelasticOperator",
+        "MaxwellOperator",
+        "AdvectionOperator"
+    ])

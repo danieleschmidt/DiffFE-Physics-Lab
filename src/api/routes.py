@@ -16,6 +16,14 @@ from ..services import FEBMLSolver, OptimizationService, AssemblyEngine
 from ..utils import validate_mesh, compute_error
 from ..utils.manufactured_solutions import generate_manufactured_solution, SolutionType
 
+# Import sentiment analysis routes
+try:
+    from .sentiment_routes import sentiment_bp
+    HAS_SENTIMENT_ROUTES = True
+except ImportError:
+    HAS_SENTIMENT_ROUTES = False
+    sentiment_bp = None
+
 logger = logging.getLogger(__name__)
 
 if HAS_FLASK:
@@ -470,6 +478,11 @@ def register_routes(app):
     
     app.register_blueprint(api_bp)
     logger.info("API routes registered")
+    
+    # Register sentiment analysis routes if available
+    if HAS_SENTIMENT_ROUTES and sentiment_bp:
+        app.register_blueprint(sentiment_bp)
+        logger.info("Sentiment analysis routes registered")
 
 
 # Error handlers for the blueprint
