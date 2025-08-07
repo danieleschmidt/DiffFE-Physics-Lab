@@ -350,6 +350,24 @@ if HAS_FLASK:
                 'type': 'nonlinear', 
                 'description': 'Navier-Stokes operator for fluid flow',
                 'parameters': ['reynolds_number', 'body_force']
+            },
+            {
+                'name': 'physics_informed_sentiment',
+                'type': 'ml',
+                'description': 'Physics-informed sentiment classifier using energy conservation',
+                'parameters': ['vocab_size', 'embedding_dim', 'physics_weight']
+            },
+            {
+                'name': 'diffusion_sentiment',
+                'type': 'ml',
+                'description': 'Sentiment propagation using diffusion equations',
+                'parameters': ['diffusion_rate', 'time_steps']
+            },
+            {
+                'name': 'conservation_sentiment',
+                'type': 'ml',
+                'description': 'Sentiment analyzer with conservation principles',
+                'parameters': ['conservation_weight']
             }
         ]
         
@@ -444,6 +462,253 @@ if HAS_FLASK:
             
         except Exception as e:
             logger.error(f"Convergence validation failed: {e}")
+            return jsonify({'error': str(e)}), 500
+    
+    
+    # Sentiment Analysis Endpoints
+    @api_bp.route('/sentiment/analyze', methods=['POST'])
+    @require_json
+    @handle_errors
+    def analyze_sentiment():
+        """Analyze sentiment using physics-informed models."""
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['text']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({'error': f'Missing required field: {field}'}), 400
+        
+        text = data['text']
+        model_type = data.get('model_type', 'physics_informed')
+        model_params = data.get('parameters', {})
+        
+        try:
+            from ..operators.sentiment import create_sentiment_operator
+            
+            # Create sentiment operator
+            operator = create_sentiment_operator(model_type, **model_params)
+            
+            # Simple tokenization (in production would use proper tokenizer)
+            tokens = text.lower().split()
+            token_ids = [hash(token) % operator.vocab_size for token in tokens]
+            
+            if operator.backend == "jax":
+                import jax.numpy as jnp
+                token_array = jnp.array(token_ids[:100])  # Limit sequence length
+            else:
+                import torch
+                token_array = torch.tensor(token_ids[:100], dtype=torch.long)
+            
+            # Get sentiment prediction
+            prediction = operator.forward(token_array)
+            
+            # Convert to standard format
+            if operator.backend == "jax":
+                sentiment_scores = prediction.tolist()
+            else:
+                sentiment_scores = prediction.detach().numpy().tolist()
+            
+            # Map to sentiment labels
+            sentiment_labels = ['negative', 'neutral', 'positive']
+            predicted_class = sentiment_scores.index(max(sentiment_scores))
+            
+            result = {
+                'text': text,
+                'model_type': model_type,
+                'backend': operator.backend,
+                'sentiment': {
+                    'predicted_class': sentiment_labels[predicted_class],
+                    'confidence': max(sentiment_scores),
+                    'scores': {
+                        label: score for label, score in zip(sentiment_labels, sentiment_scores)
+                    }
+                },
+                'tokens_processed': len(token_ids),
+                'physics_regularization': model_type in ['physics_informed', 'conservation', 'diffusion']
+            }
+            
+            logger.info(f"Analyzed sentiment for text length {len(text)}")
+            
+            return jsonify({
+                'success': True,
+                'result': result
+            })
+            
+        except Exception as e:
+            logger.error(f"Sentiment analysis failed: {e}")
+            return jsonify({'error': str(e)}), 500
+    
+    
+    @api_bp.route('/sentiment/batch', methods=['POST'])
+    @require_json
+    @handle_errors
+    def analyze_sentiment_batch():
+        """Analyze sentiment for multiple texts."""
+        data = request.get_json()
+        
+        # Validate required fields
+        if 'texts' not in data or not isinstance(data['texts'], list):
+            return jsonify({'error': 'Field "texts" must be a list of strings'}), 400
+        
+        texts = data['texts'][:100]  # Limit batch size
+        model_type = data.get('model_type', 'physics_informed')
+        model_params = data.get('parameters', {})
+        
+        try:
+            from ..operators.sentiment import create_sentiment_operator
+            
+            # Create sentiment operator
+            operator = create_sentiment_operator(model_type, **model_params)
+            
+            results = []
+            sentiment_labels = ['negative', 'neutral', 'positive']
+            
+            for i, text in enumerate(texts):
+                # Simple tokenization
+                tokens = text.lower().split()
+                token_ids = [hash(token) % operator.vocab_size for token in tokens]
+                
+                if operator.backend == "jax":
+                    import jax.numpy as jnp
+                    token_array = jnp.array(token_ids[:100])
+                else:
+                    import torch
+                    token_array = torch.tensor(token_ids[:100], dtype=torch.long)
+                
+                # Get prediction
+                prediction = operator.forward(token_array)
+                
+                # Convert to standard format
+                if operator.backend == "jax":
+                    sentiment_scores = prediction.tolist()
+                else:
+                    sentiment_scores = prediction.detach().numpy().tolist()
+                
+                predicted_class = sentiment_scores.index(max(sentiment_scores))
+                
+                results.append({
+                    'index': i,
+                    'text': text,
+                    'sentiment': {
+                        'predicted_class': sentiment_labels[predicted_class],
+                        'confidence': max(sentiment_scores),
+                        'scores': {
+                            label: score for label, score in zip(sentiment_labels, sentiment_scores)
+                        }
+                    }
+                })
+            
+            logger.info(f"Processed batch of {len(texts)} texts")
+            
+            return jsonify({
+                'success': True,
+                'results': results,
+                'model_type': model_type,
+                'backend': operator.backend,
+                'batch_size': len(texts)
+            })
+            
+        except Exception as e:
+            logger.error(f"Batch sentiment analysis failed: {e}")
+            return jsonify({'error': str(e)}), 500
+    
+    
+    @api_bp.route('/sentiment/models', methods=['GET'])
+    @handle_errors
+    def list_sentiment_models():
+        """List available sentiment analysis models."""
+        models = [
+            {
+                'name': 'physics_informed',
+                'description': 'Physics-informed sentiment classifier with energy conservation',
+                'parameters': {
+                    'vocab_size': {'type': 'int', 'default': 10000},
+                    'embedding_dim': {'type': 'int', 'default': 128},
+                    'hidden_dim': {'type': 'int', 'default': 256},
+                    'physics_weight': {'type': 'float', 'default': 0.1}
+                },
+                'features': ['energy_conservation', 'gradient_flow', 'stable_representations']
+            },
+            {
+                'name': 'diffusion',
+                'description': 'Sentiment propagation using heat equation dynamics',
+                'parameters': {
+                    'diffusion_rate': {'type': 'float', 'default': 0.1},
+                    'time_steps': {'type': 'int', 'default': 10}
+                },
+                'features': ['contextual_propagation', 'temporal_dynamics', 'smooth_transitions']
+            },
+            {
+                'name': 'conservation',
+                'description': 'Conservation-based sentiment analysis',
+                'parameters': {
+                    'conservation_weight': {'type': 'float', 'default': 0.05}
+                },
+                'features': ['conservation_laws', 'semantic_consistency', 'balanced_predictions']
+            }
+        ]
+        
+        return jsonify({
+            'models': models,
+            'count': len(models),
+            'backends': ['jax', 'torch']
+        })
+    
+    
+    @api_bp.route('/sentiment/diffuse', methods=['POST'])
+    @require_json  
+    @handle_errors
+    def diffuse_sentiment():
+        """Apply sentiment diffusion to text segments."""
+        data = request.get_json()
+        
+        required_fields = ['segments', 'adjacency']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({'error': f'Missing required field: {field}'}), 400
+        
+        segments = data['segments']
+        adjacency = data['adjacency']
+        diffusion_params = data.get('parameters', {})
+        
+        try:
+            from ..operators.sentiment import DiffusionSentimentPropagator
+            import numpy as np
+            
+            # Create diffusion operator
+            propagator = DiffusionSentimentPropagator(**diffusion_params)
+            
+            # Convert to numpy arrays
+            initial_sentiment = np.array(segments, dtype=float)
+            adjacency_matrix = np.array(adjacency, dtype=float)
+            
+            # Apply sentiment diffusion
+            if propagator.backend == "jax":
+                import jax.numpy as jnp
+                initial_jnp = jnp.array(initial_sentiment)
+                adjacency_jnp = jnp.array(adjacency_matrix)
+                
+                propagated = propagator.propagate_sentiment(initial_jnp, adjacency_jnp)
+                result_sentiment = propagated.tolist()
+            else:
+                import torch
+                initial_torch = torch.tensor(initial_sentiment, dtype=torch.float32)
+                adjacency_torch = torch.tensor(adjacency_matrix, dtype=torch.float32)
+                
+                propagated = propagator.propagate_sentiment(initial_torch, adjacency_torch)
+                result_sentiment = propagated.detach().numpy().tolist()
+            
+            return jsonify({
+                'success': True,
+                'initial_sentiment': initial_sentiment.tolist(),
+                'propagated_sentiment': result_sentiment,
+                'diffusion_parameters': diffusion_params,
+                'backend': propagator.backend
+            })
+            
+        except Exception as e:
+            logger.error(f"Sentiment diffusion failed: {e}")
             return jsonify({'error': str(e)}), 500
     
     
