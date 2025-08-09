@@ -1,11 +1,62 @@
 """Manufactured solution generators for verification."""
 
 from typing import Dict, Callable, Any, Optional, Tuple
-import numpy as np
-import logging
-from enum import Enum
+import math
 
-logger = logging.getLogger(__name__)
+# Handle optional numpy import
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
+    # Provide fallback implementations
+    class NumpyFallback:
+        @staticmethod
+        def array(data):
+            return list(data) if hasattr(data, '__iter__') else [data]
+        
+        @staticmethod
+        def sin(x):
+            return math.sin(x)
+        
+        @staticmethod
+        def cos(x):
+            return math.cos(x)
+            
+        @staticmethod
+        def exp(x):
+            return math.exp(x)
+        
+        @property
+        def pi(self):
+            return math.pi
+        
+        @staticmethod
+        def isnan(x):
+            return x != x
+        
+        @staticmethod
+        def isinf(x):
+            return x == float('inf') or x == float('-inf')
+        
+        @staticmethod
+        def any(arr):
+            return any(arr)
+    
+    np = NumpyFallback()
+    np.pi = math.pi
+
+try:
+    import logging
+    logger = logging.getLogger(__name__)
+except ImportError:
+    # Fallback logger
+    class Logger:
+        def info(self, msg): print(f"INFO: {msg}")
+        def warning(self, msg): print(f"WARNING: {msg}")
+    logger = Logger()
+
+from enum import Enum
 
 
 class SolutionType(Enum):
