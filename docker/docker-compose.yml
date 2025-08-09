@@ -1,0 +1,192 @@
+version: '3.8'
+
+services:
+  # Main application
+  diffhe-app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: production
+    container_name: diffhe-physics-lab
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DIFFHE_ENV=production
+      - DIFFHE_LOG_LEVEL=INFO
+      - DIFFHE_BACKEND=numpy  # Safe default
+    volumes:
+      - ../data:/app/data:ro
+      - ../logs:/app/logs
+    networks:
+      - diffhe-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+        reservations:
+          memory: 1G
+          cpus: '1'
+
+  # Development environment
+  diffhe-dev:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: development
+    container_name: diffhe-dev
+    restart: "no"
+    ports:
+      - "8080:8080"
+      - "8888:8888"  # Jupyter
+    environment:
+      - DIFFHE_ENV=development
+      - DIFFHE_LOG_LEVEL=DEBUG
+    volumes:
+      - ..:/app
+      - ../data:/app/data
+      - ../logs:/app/logs
+    networks:
+      - diffhe-network
+    command: ["python", "-m", "src.api.app", "--dev", "--port", "8080"]
+
+  # Database (PostgreSQL for production)
+  diffhe-db:
+    image: postgres:15-alpine
+    container_name: diffhe-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: diffhe_physics_lab
+      POSTGRES_USER: diffhe
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-diffhe123}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - diffhe-network
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U diffhe"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis cache
+  diffhe-cache:
+    image: redis:7-alpine
+    container_name: diffhe-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+      - ../redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      - diffhe-network
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Monitoring stack
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: diffhe-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - diffhe-network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: diffhe-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin123}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    networks:
+      - diffhe-network
+
+  # Jupyter notebook for research
+  jupyter:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: development
+    container_name: diffhe-jupyter
+    restart: "no"
+    ports:
+      - "8888:8888"
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+    volumes:
+      - ..:/app
+      - ../notebooks:/app/notebooks
+    networks:
+      - diffhe-network
+    command: ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root"]
+
+  # GPU-enabled service (optional)
+  diffhe-gpu:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: gpu
+    container_name: diffhe-gpu
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    environment:
+      - DIFFHE_ENV=production
+      - DIFFHE_BACKEND=jax  # GPU-enabled backend
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ../data:/app/data:ro
+      - ../logs:/app/logs
+    networks:
+      - diffhe-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles:
+      - gpu
+
+networks:
+  diffhe-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
