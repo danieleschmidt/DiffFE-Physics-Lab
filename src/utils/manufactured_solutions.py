@@ -618,3 +618,39 @@ def generate_vector_mms(
         'num_components': num_components,
         'dimension': dimension
     }
+
+
+# Convenience functions for direct import (backward compatibility)
+def polynomial_2d(degree: int = 2):
+    """Generate 2D polynomial manufactured solution."""
+    sol = generate_manufactured_solution(SolutionType.POLYNOMIAL, 2, {'degree': degree})
+    return sol['solution'], sol['source']
+
+
+def trigonometric_2d(frequency: float = 1.0):
+    """Generate 2D trigonometric manufactured solution."""
+    sol = generate_manufactured_solution(SolutionType.TRIGONOMETRIC, 2, {'frequency': frequency})
+    return sol['solution'], sol['source']
+
+
+def exponential_2d(decay_rate: float = 1.0):
+    """Generate 2D exponential manufactured solution."""
+    sol = generate_manufactured_solution(SolutionType.EXPONENTIAL, 2, {'decay_rate': decay_rate})
+    return sol['solution'], sol['source']
+
+
+def gaussian_2d(sigma: float = 0.1):
+    """Generate 2D Gaussian manufactured solution."""
+    sol = generate_manufactured_solution(SolutionType.GAUSSIAN, 2, {'sigma': sigma})
+    return sol['solution'], sol['source']
+
+
+# Additional compatibility functions
+def laplace_manufactured_solution(solution_type: str = "polynomial"):
+    """Generate Laplace equation manufactured solution."""
+    if solution_type == "polynomial":
+        return polynomial_2d(degree=2)
+    elif solution_type == "trigonometric":
+        return trigonometric_2d(frequency=1.0)
+    else:
+        return polynomial_2d(degree=2)

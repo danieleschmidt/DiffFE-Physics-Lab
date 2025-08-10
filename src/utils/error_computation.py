@@ -170,3 +170,42 @@ def compute_relative_error(
         return float('inf') if abs_error > 0 else 0.0
     
     return abs_error / exact_norm_val
+
+
+def compute_l2_error(computed_solution: Any, exact_solution: Any, mesh: Any = None) -> float:
+    """Compute L2 error between solutions."""
+    return compute_error(computed_solution, exact_solution, 'L2', mesh)
+
+
+def compute_h1_error(computed_solution: Any, exact_solution: Any, mesh: Any = None) -> float:  
+    """Compute H1 error between solutions."""
+    return compute_error(computed_solution, exact_solution, 'H1', mesh)
+
+
+def compute_linf_error(computed_solution: Any, exact_solution: Any) -> float:
+    """Compute L-infinity error between solutions.""" 
+    return compute_error(computed_solution, exact_solution, 'Linf')
+
+
+# Fallback implementations for when Firedrake is not available
+def compute_numpy_error(computed: Any, exact: Any, norm_type: str = 'L2') -> float:
+    """Compute error using NumPy arrays."""
+    import numpy as np
+    
+    # Convert to numpy arrays
+    computed_arr = np.asarray(computed)
+    
+    if callable(exact):
+        # For function-based exact solutions, assume computed is on a grid
+        exact_arr = exact(computed_arr) if computed_arr.ndim > 0 else exact([computed_arr])
+    else:
+        exact_arr = np.asarray(exact)
+    
+    error_arr = computed_arr - exact_arr
+    
+    if norm_type.upper() == 'L2':
+        return np.linalg.norm(error_arr)
+    elif norm_type.upper() == 'LINF':
+        return np.max(np.abs(error_arr))
+    else:
+        return np.linalg.norm(error_arr)  # Default to L2

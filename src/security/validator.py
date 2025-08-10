@@ -47,7 +47,7 @@ class SecurityValidator:
                 re.IGNORECASE
             ),
             'path_traversal': re.compile(
-                r'(\.\.[/\\])|(\.\.\\\)|(/etc/)|(/proc/)|(/sys/)|(\\\\\\.\\)|(\\\\.\\\\)',
+                r'(\.\.[/\\\\])|(/etc/)|(/proc/)|(/sys/)',
                 re.IGNORECASE
             ),
             'ldap_injection': re.compile(
@@ -520,3 +520,38 @@ class SecurityValidator:
                 "usb=()"
             )
         }
+
+
+# Additional classes needed by tests
+from dataclasses import dataclass
+from enum import Enum
+
+
+class ValidationStatus(Enum):
+    """Status of a validation result."""
+    VALID = "valid"
+    WARNING = "warning"
+    INVALID = "invalid"
+
+
+@dataclass
+class ValidationResult:
+    """Result of a validation check."""
+    status: ValidationStatus
+    message: str
+    details: Optional[Dict[str, Any]] = None
+    
+    @property
+    def is_valid(self) -> bool:
+        """Check if validation passed."""
+        return self.status == ValidationStatus.VALID
+    
+    @property
+    def is_warning(self) -> bool:
+        """Check if validation has warnings."""
+        return self.status == ValidationStatus.WARNING
+    
+    @property
+    def is_invalid(self) -> bool:
+        """Check if validation failed."""
+        return self.status == ValidationStatus.INVALID

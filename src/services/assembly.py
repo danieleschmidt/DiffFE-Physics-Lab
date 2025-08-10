@@ -47,6 +47,15 @@ class StandardAssembly(AssemblyStrategy):
         return fd.assemble(linear_form)
 
 
+class AssemblyService:
+    """Alternative name for AssemblyEngine for backward compatibility."""
+    def __init__(self, *args, **kwargs):
+        self._engine = AssemblyEngine(*args, **kwargs)
+        
+    def __getattr__(self, name):
+        return getattr(self._engine, name)
+
+
 class AssemblyEngine:
     """High-performance assembly engine for finite element operations."""
     
