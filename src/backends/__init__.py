@@ -1,6 +1,7 @@
 """Automatic differentiation backend management."""
 
 from .base import ADBackend, get_backend, set_default_backend, list_backends
+from .numpy_backend import NumpyBackend  
 from .jax_backend import JAXBackend
 from .torch_backend import TorchBackend
 
@@ -9,6 +10,7 @@ __all__ = [
     "get_backend",
     "set_default_backend", 
     "list_backends",
-    "JAXBackend",
+    "NumpyBackend",
+    "JAXBackend", 
     "TorchBackend"
 ]

@@ -10,6 +10,18 @@ try:
     HAS_JAX = True
 except ImportError:
     HAS_JAX = False
+    # Create dummy jax.numpy for type hints when JAX is not available
+    class DummyJNP:
+        ndarray = np.ndarray
+        float32 = np.float32
+        float64 = np.float64
+        int32 = np.int32
+        int64 = np.int64
+    jnp = DummyJNP()
+    # Create dummy functions
+    def dummy_func(*args, **kwargs):
+        raise ImportError("JAX not installed. Install with: pip install jax jaxlib")
+    grad = jacobian = hessian = jit = vmap = dummy_func
 
 from .base import ADBackend, register_backend
 

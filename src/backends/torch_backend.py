@@ -10,6 +10,25 @@ try:
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
+    # Create dummy torch for type hints when PyTorch is not available
+    class DummyTorch:
+        class Tensor:
+            pass
+        float32 = float
+        float64 = float  
+        int32 = int
+        int64 = int
+        bool = bool
+    torch = DummyTorch()
+    # Create dummy functions
+    def dummy_func(*args, **kwargs):
+        raise ImportError("PyTorch not installed. Install with: pip install torch")
+    grad = dummy_func
+    # Create dummy nn module
+    class DummyNN:
+        class Module:
+            pass
+    nn = DummyNN()
 
 from .base import ADBackend, register_backend
 

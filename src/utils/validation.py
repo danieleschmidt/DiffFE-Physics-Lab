@@ -162,3 +162,37 @@ def validate_parameters(parameters: Dict[str, Any],
             raise ValidationError(f"Missing required parameters: {missing_params}")
     
     logger.debug(f"Parameters validation passed: {len(parameters)} parameters")
+
+
+def validate_positive(value: float, name: str = "value") -> bool:
+    """Validate that a value is positive."""
+    if value <= 0:
+        raise ValueError(f"{name} must be positive, got {value}")
+    return True
+
+
+def validate_range(value: float, min_val: float, max_val: float, name: str = "value") -> bool:
+    """Validate that a value is within a range."""
+    if not (min_val <= value <= max_val):
+        raise ValueError(f"{name} must be between {min_val} and {max_val}, got {value}")
+    return True
+
+
+def validate_array_shape(array, expected_shape: tuple, name: str = "array") -> bool:
+    """Validate array has expected shape.""" 
+    if hasattr(array, 'shape'):
+        if array.shape != expected_shape:
+            raise ValueError(f"{name} must have shape {expected_shape}, got {array.shape}")
+    return True
+
+
+def validate_convergence_tolerance(tolerance: float) -> bool:
+    """Validate convergence tolerance is reasonable."""
+    return validate_range(tolerance, 1e-16, 1e-2, "tolerance")
+
+
+def validate_mesh_quality(mesh: Any) -> bool:
+    """Validate mesh quality (placeholder implementation)."""
+    if mesh is None:
+        raise ValueError("Mesh cannot be None")
+    return True

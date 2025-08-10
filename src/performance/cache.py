@@ -587,3 +587,47 @@ def cached(ttl: Optional[float] = None, key_func: Optional[Callable] = None):
 def clear_global_cache():
     """Clear global cache."""
     get_global_cache().clear()
+
+
+class LRUCache:
+    """Least Recently Used cache implementation."""
+    
+    def __init__(self, capacity: int = 100):
+        self.capacity = capacity
+        self.cache = {}
+        self.access_order = []
+    
+    def get(self, key: str):
+        """Get value from cache."""
+        if key in self.cache:
+            # Move to end (most recent)
+            self.access_order.remove(key)
+            self.access_order.append(key)
+            return self.cache[key]
+        return None
+    
+    def put(self, key: str, value):
+        """Put value in cache."""
+        if key in self.cache:
+            # Update existing
+            self.cache[key] = value
+            self.access_order.remove(key)
+            self.access_order.append(key)
+        else:
+            # Add new
+            if len(self.cache) >= self.capacity:
+                # Remove least recently used
+                lru_key = self.access_order.pop(0)
+                del self.cache[lru_key]
+            
+            self.cache[key] = value
+            self.access_order.append(key)
+    
+    def clear(self):
+        """Clear cache."""
+        self.cache.clear()
+        self.access_order.clear()
+    
+    def size(self) -> int:
+        """Get cache size."""
+        return len(self.cache)

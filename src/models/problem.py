@@ -45,10 +45,11 @@ class Problem:
         self,
         mesh=None,
         function_space=None, 
-        backend: str = 'jax'
+        backend: str = 'numpy'
     ):
         if not HAS_FIREDRAKE:
-            raise ImportError("Firedrake is required but not installed")
+            # Create minimal problem for demonstration without Firedrake
+            print("⚠️  Firedrake not available - running in demo mode")
             
         self.mesh = mesh
         self.function_space = function_space

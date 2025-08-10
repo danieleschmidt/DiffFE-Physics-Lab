@@ -1,6 +1,7 @@
 """Core FEBML solver implementation."""
 
 from typing import Dict, Any, Optional, List, Callable, Union
+from enum import Enum
 import numpy as np
 import logging
 
@@ -507,3 +508,48 @@ class FEBMLSolver:
                 f"problem={self.problem is not None}, "
                 f"solutions={len(self.solution_history)}"
                 f")")
+
+
+class SolverMethod(Enum):
+    """Enumeration of solver methods."""
+    DIRECT = "direct"
+    ITERATIVE = "iterative"
+    MULTIGRID = "multigrid"
+    NEWTON = "newton"
+    BFGS = "bfgs"
+    CG = "cg"
+    GMRES = "gmres"
+
+
+class SolverConfig:
+    """Configuration for solver parameters."""
+    
+    def __init__(
+        self, 
+        method: Union[str, SolverMethod] = SolverMethod.DIRECT,
+        tolerance: float = 1e-8,
+        max_iterations: int = 1000,
+        preconditioner: Optional[str] = None,
+        linear_solver: Optional[str] = None,
+        nonlinear_solver: Optional[str] = None,
+        **kwargs
+    ):
+        self.method = SolverMethod(method) if isinstance(method, str) else method
+        self.tolerance = tolerance
+        self.max_iterations = max_iterations
+        self.preconditioner = preconditioner
+        self.linear_solver = linear_solver
+        self.nonlinear_solver = nonlinear_solver
+        self.extra_options = kwargs
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert configuration to dictionary."""
+        return {
+            'method': self.method.value,
+            'tolerance': self.tolerance,
+            'max_iterations': self.max_iterations,
+            'preconditioner': self.preconditioner,
+            'linear_solver': self.linear_solver,
+            'nonlinear_solver': self.nonlinear_solver,
+            **self.extra_options
+        }

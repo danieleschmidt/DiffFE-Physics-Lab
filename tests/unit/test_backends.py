@@ -410,10 +410,15 @@ class TestBackendInteroperability:
         with patch(mock_available[backend_name], True):
             patches = [patch(module) for module in mock_modules[backend_name]]
             
-            with patches[0] if len(patches) == 1 else patches[0], \
-                 *patches[1:] if len(patches) > 1 else []:
-                backend = get_backend(backend_name)
-                assert backend.__class__.__name__ == expected_type
+            # Apply all patches in sequence
+            with patches[0]:
+                if len(patches) > 1:
+                    with patches[1]:
+                        backend = get_backend(backend_name)
+                        assert backend.__class__.__name__ == expected_type
+                else:
+                    backend = get_backend(backend_name)
+                    assert backend.__class__.__name__ == expected_type
 
 
 class TestBackendErrorHandling:
