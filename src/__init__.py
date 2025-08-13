@@ -9,51 +9,39 @@ __author__ = "DiffFE-Physics-Lab Team"
 __email__ = "team@diffhe-physics.org"
 __license__ = "BSD-3-Clause"
 
-from .models import Problem, MultiPhysicsProblem
-from .operators import (
-    laplacian,
-    elasticity, 
-    navier_stokes,
-    hyperelastic,
-    maxwell,
-    advection
-)
-from .services import (
-    FEBMLSolver,
-    OptimizationService,
-    AssemblyEngine
-)
 from .backends import get_backend, set_default_backend
-from .utils import (
-    validate_mesh,
-    compute_error,
-    generate_manufactured_solution
+from .models import MultiPhysicsProblem, Problem
+from .operators import (
+    advection,
+    elasticity,
+    hyperelastic,
+    laplacian,
+    maxwell,
+    navier_stokes,
 )
+from .services import AssemblyEngine, FEBMLSolver, OptimizationService
+from .utils import compute_error, generate_manufactured_solution, validate_mesh
 
 __all__ = [
     # Core classes
     "Problem",
-    "MultiPhysicsProblem", 
+    "MultiPhysicsProblem",
     "FEBMLSolver",
-    
     # Operators
     "laplacian",
     "elasticity",
-    "navier_stokes", 
+    "navier_stokes",
     "hyperelastic",
     "maxwell",
     "advection",
-    
     # Services
     "OptimizationService",
     "AssemblyEngine",
-    
     # Backend management
     "get_backend",
     "set_default_backend",
-    
     # Utilities
     "validate_mesh",
     "compute_error",
-    "generate_manufactured_solution"
+    "generate_manufactured_solution",
 ]

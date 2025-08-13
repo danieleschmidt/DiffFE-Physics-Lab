@@ -1,11 +1,7 @@
 """Core services for DiffFE-Physics-Lab."""
 
-from .solver import FEBMLSolver
-from .optimization import OptimizationService
 from .assembly import AssemblyEngine
+from .optimization import OptimizationService
+from .solver import FEBMLSolver
 
-__all__ = [
-    'FEBMLSolver',
-    'OptimizationService',
-    'AssemblyEngine'
-]
+__all__ = ["FEBMLSolver", "OptimizationService", "AssemblyEngine"]

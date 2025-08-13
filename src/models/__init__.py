@@ -1,15 +1,15 @@
 """Core problem models for DiffFE-Physics-Lab."""
 
-from .problem import Problem, FEBMLProblem
-from .multiphysics import MultiPhysicsProblem, Domain
-from .fields import Field, ParametricField, BoundaryCondition
+from .fields import BoundaryCondition, Field, ParametricField
+from .multiphysics import Domain, MultiPhysicsProblem
+from .problem import FEBMLProblem, Problem
 
 __all__ = [
     "Problem",
-    "FEBMLProblem", 
+    "FEBMLProblem",
     "MultiPhysicsProblem",
     "Domain",
     "Field",
     "ParametricField",
-    "BoundaryCondition"
+    "BoundaryCondition",
 ]

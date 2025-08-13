@@ -1,10 +1,11 @@
 """Error computation utilities for verification and validation."""
 
-from typing import Callable, Dict, Any, List, Optional, Union
 import logging
+from typing import Any, Callable, Dict, List, Optional, Union
 
 try:
     import firedrake as fd
+
     HAS_FIREDRAKE = True
 except ImportError:
     HAS_FIREDRAKE = False
@@ -15,11 +16,11 @@ logger = logging.getLogger(__name__)
 def compute_error(
     computed_solution: Any,
     exact_solution: Union[Callable, Any],
-    norm_type: str = 'L2',
-    mesh: Any = None
+    norm_type: str = "L2",
+    mesh: Any = None,
 ) -> float:
     """Compute error between computed and exact solutions.
-    
+
     Parameters
     ----------
     computed_solution : firedrake.Function
@@ -30,12 +31,12 @@ def compute_error(
         Error norm ('L2', 'H1', 'Linf'), by default 'L2'
     mesh : firedrake.Mesh, optional
         Mesh for integration (if not inferrable from solution)
-        
+
     Returns
     -------
     float
         Error value
-        
+
     Examples
     --------
     >>> def exact(x): return np.sin(np.pi * x[0])
@@ -45,10 +46,10 @@ def compute_error(
     if not HAS_FIREDRAKE:
         logger.warning("Cannot compute error: Firedrake not available")
         return 0.0
-    
+
     # Get function space from computed solution
     V = computed_solution.function_space()
-    
+
     # Convert exact solution to Function if needed
     if callable(exact_solution):
         exact_func = fd.Function(V)
@@ -57,36 +58,34 @@ def compute_error(
         exact_func = exact_solution
     else:
         raise ValueError("exact_solution must be callable or firedrake.Function")
-    
+
     # Compute error function
     error_func = computed_solution - exact_func
-    
+
     # Compute specified norm
-    if norm_type.upper() == 'L2':
+    if norm_type.upper() == "L2":
         error_val = fd.sqrt(fd.assemble(fd.inner(error_func, error_func) * fd.dx))
-    
-    elif norm_type.upper() == 'H1':
+
+    elif norm_type.upper() == "H1":
         l2_term = fd.inner(error_func, error_func) * fd.dx
         h1_term = fd.inner(fd.grad(error_func), fd.grad(error_func)) * fd.dx
         error_val = fd.sqrt(fd.assemble(l2_term + h1_term))
-    
-    elif norm_type.upper() == 'LINF':
+
+    elif norm_type.upper() == "LINF":
         # Maximum absolute error (simplified)
         error_val = max(abs(error_func.dat.data))
-    
+
     else:
         raise ValueError(f"Unknown norm type: {norm_type}")
-    
+
     return float(error_val)
 
 
 def compute_convergence_rate(
-    mesh_sizes: List[float],
-    errors: List[float],
-    fit_method: str = 'linear'
+    mesh_sizes: List[float], errors: List[float], fit_method: str = "linear"
 ) -> Dict[str, float]:
     """Compute convergence rate from mesh refinement study.
-    
+
     Parameters
     ----------
     mesh_sizes : List[float]
@@ -95,7 +94,7 @@ def compute_convergence_rate(
         Corresponding error values
     fit_method : str, optional
         Fitting method ('linear'), by default 'linear'
-        
+
     Returns
     -------
     Dict[str, float]
@@ -103,34 +102,28 @@ def compute_convergence_rate(
     """
     if len(mesh_sizes) != len(errors) or len(mesh_sizes) < 2:
         raise ValueError("Need at least 2 matching mesh sizes and errors")
-    
+
     # Compute convergence rate using simple approach
     import math
-    
+
     # Use last two points for rate computation
     h1, h2 = mesh_sizes[-2], mesh_sizes[-1]
     e1, e2 = errors[-2], errors[-1]
-    
+
     if h1 <= 0 or h2 <= 0 or e1 <= 0 or e2 <= 0:
-        return {'rate': 0.0, 'error_constant': 1.0}
-    
+        return {"rate": 0.0, "error_constant": 1.0}
+
     rate = math.log(e2 / e1) / math.log(h2 / h1)
-    error_constant = e1 / (h1 ** rate)
-    
-    return {
-        'rate': rate,
-        'error_constant': error_constant,
-        'fit_method': fit_method
-    }
+    error_constant = e1 / (h1**rate)
+
+    return {"rate": rate, "error_constant": error_constant, "fit_method": fit_method}
 
 
 def compute_relative_error(
-    computed_solution: Any,
-    exact_solution: Union[Callable, Any],
-    norm_type: str = 'L2'
+    computed_solution: Any, exact_solution: Union[Callable, Any], norm_type: str = "L2"
 ) -> float:
     """Compute relative error.
-    
+
     Parameters
     ----------
     computed_solution : firedrake.Function
@@ -139,7 +132,7 @@ def compute_relative_error(
         Exact solution
     norm_type : str, optional
         Norm type, by default 'L2'
-        
+
     Returns
     -------
     float
@@ -147,65 +140,71 @@ def compute_relative_error(
     """
     if not HAS_FIREDRAKE:
         return 0.0
-    
+
     # Compute absolute error
     abs_error = compute_error(computed_solution, exact_solution, norm_type)
-    
+
     # Compute norm of exact solution
     V = computed_solution.function_space()
-    
+
     if callable(exact_solution):
         exact_func = fd.Function(V)
         exact_func.interpolate(exact_solution)
     else:
         exact_func = exact_solution
-    
-    if norm_type.upper() == 'L2':
+
+    if norm_type.upper() == "L2":
         exact_norm = fd.sqrt(fd.assemble(fd.inner(exact_func, exact_func) * fd.dx))
     else:
         exact_norm = 1.0  # Simplified
-    
+
     exact_norm_val = float(exact_norm)
     if exact_norm_val == 0:
-        return float('inf') if abs_error > 0 else 0.0
-    
+        return float("inf") if abs_error > 0 else 0.0
+
     return abs_error / exact_norm_val
 
 
-def compute_l2_error(computed_solution: Any, exact_solution: Any, mesh: Any = None) -> float:
+def compute_l2_error(
+    computed_solution: Any, exact_solution: Any, mesh: Any = None
+) -> float:
     """Compute L2 error between solutions."""
-    return compute_error(computed_solution, exact_solution, 'L2', mesh)
+    return compute_error(computed_solution, exact_solution, "L2", mesh)
 
 
-def compute_h1_error(computed_solution: Any, exact_solution: Any, mesh: Any = None) -> float:  
+def compute_h1_error(
+    computed_solution: Any, exact_solution: Any, mesh: Any = None
+) -> float:
     """Compute H1 error between solutions."""
-    return compute_error(computed_solution, exact_solution, 'H1', mesh)
+    return compute_error(computed_solution, exact_solution, "H1", mesh)
 
 
 def compute_linf_error(computed_solution: Any, exact_solution: Any) -> float:
-    """Compute L-infinity error between solutions.""" 
-    return compute_error(computed_solution, exact_solution, 'Linf')
+    """Compute L-infinity error between solutions."""
+    return compute_error(computed_solution, exact_solution, "Linf")
 
 
 # Fallback implementations for when Firedrake is not available
-def compute_numpy_error(computed: Any, exact: Any, norm_type: str = 'L2') -> float:
+def compute_numpy_error(computed: Any, exact: Any, norm_type: str = "L2") -> float:
     """Compute error using NumPy arrays."""
     import numpy as np
-    
+
     # Convert to numpy arrays
     computed_arr = np.asarray(computed)
-    
+
     if callable(exact):
         # For function-based exact solutions, assume computed is on a grid
-        exact_arr = exact(computed_arr) if computed_arr.ndim > 0 else exact([computed_arr])
+        exact_arr = (
+            exact(computed_arr) if computed_arr.ndim > 0 else exact([computed_arr])
+        )
     else:
         exact_arr = np.asarray(exact)
-    
+
     error_arr = computed_arr - exact_arr
-    
-    if norm_type.upper() == 'L2':
+
+    if norm_type.upper() == "L2":
         return np.linalg.norm(error_arr)
-    elif norm_type.upper() == 'LINF':
+    elif norm_type.upper() == "LINF":
         return np.max(np.abs(error_arr))
     else:
         return np.linalg.norm(error_arr)  # Default to L2
