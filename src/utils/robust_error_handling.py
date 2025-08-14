@@ -426,5 +426,121 @@ def setup_robust_logging():
     thread.start()
 
 
+# Circuit Breaker class for backward compatibility
+class CircuitBreaker:
+    """Circuit breaker implementation as a class."""
+    
+    def __init__(
+        self,
+        failure_threshold: int = 5,
+        timeout: float = 60.0,
+        expected_exception: Type[Exception] = Exception,
+    ):
+        self.failure_threshold = failure_threshold
+        self.timeout = timeout
+        self.expected_exception = expected_exception
+        self.failure_count = 0
+        self.last_failure_time = 0
+        self.state = "closed"  # closed, open, half_open
+        self._lock = threading.Lock()
+    
+    def call(self, func: Callable, *args, **kwargs):
+        """Call a function through the circuit breaker."""
+        with self._lock:
+            current_time = time.time()
+            
+            # Check if circuit should be half-open
+            if self.state == "open" and current_time - self.last_failure_time > self.timeout:
+                self.state = "half_open"
+                logger.info(f"Circuit breaker half-open for {func.__name__}")
+            
+            # Reject calls if circuit is open
+            if self.state == "open":
+                raise RobustError(
+                    f"Circuit breaker open for {func.__name__}",
+                    severity=ErrorSeverity.HIGH,
+                    recovery_strategy=RecoveryStrategy.FALLBACK,
+                )
+            
+            try:
+                result = func(*args, **kwargs)
+                
+                # Success - reset failure count
+                if self.state == "half_open":
+                    self.state = "closed"
+                    self.failure_count = 0
+                    logger.info(f"Circuit breaker closed for {func.__name__}")
+                
+                return result
+                
+            except self.expected_exception as e:
+                self.failure_count += 1
+                self.last_failure_time = current_time
+                
+                if self.failure_count >= self.failure_threshold:
+                    self.state = "open"
+                    logger.warning(
+                        f"Circuit breaker opened for {func.__name__} after {self.failure_count} failures"
+                    )
+                
+                raise RobustError(
+                    f"Circuit breaker failure: {e}",
+                    severity=ErrorSeverity.MEDIUM,
+                    original_error=e,
+                    context={"failures": self.failure_count, "state": self.state},
+                )
+
+
+def retry_with_backoff(
+    max_retries: int = 3,
+    initial_delay: float = 1.0,
+    backoff_factor: float = 2.0,
+    max_delay: float = 60.0,
+    exceptions: tuple = (Exception,),
+):
+    """Retry decorator with exponential backoff."""
+    
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            delay = initial_delay
+            last_exception = None
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except exceptions as e:
+                    last_exception = e
+                    
+                    if attempt < max_retries:
+                        logger.warning(
+                            f"Attempt {attempt + 1} failed for {func.__name__}: {e}. "
+                            f"Retrying in {delay:.2f}s..."
+                        )
+                        time.sleep(delay)
+                        delay = min(delay * backoff_factor, max_delay)
+                    else:
+                        logger.error(
+                            f"All {max_retries + 1} attempts failed for {func.__name__}: {e}"
+                        )
+                        raise RobustError(
+                            f"Function failed after {max_retries + 1} attempts: {e}",
+                            severity=ErrorSeverity.HIGH,
+                            original_error=e,
+                            context={
+                                "function": func.__name__,
+                                "attempts": max_retries + 1,
+                                "max_delay": delay,
+                            },
+                        )
+            
+            # This should never be reached, but just in case
+            raise last_exception
+        
+        return wrapper
+    
+    return decorator
+
+
 # Initialize robust logging
 setup_robust_logging()
