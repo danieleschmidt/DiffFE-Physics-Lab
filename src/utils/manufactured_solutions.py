@@ -705,3 +705,71 @@ def compute_source_term(solution_func: Callable, point: np.ndarray) -> float:
         SolutionType.TRIGONOMETRIC, dimension=len(point)
     )
     return mms["source"](point)
+
+
+# Solution classes for backward compatibility with tests
+class BaseSolution:
+    """Base class for manufactured solutions."""
+    
+    def __init__(self, dimension: int = 2, parameters: Optional[Dict[str, Any]] = None):
+        self.dimension = dimension
+        self.parameters = parameters or {}
+        self._solution_dict = None
+    
+    def solution(self, x):
+        """Evaluate solution at point x."""
+        if self._solution_dict is None:
+            self._generate_solution()
+        return self._solution_dict["solution"](x)
+    
+    def source(self, x):
+        """Evaluate source term at point x."""
+        if self._solution_dict is None:
+            self._generate_solution()
+        return self._solution_dict["source"](x)
+    
+    def gradient(self, x):
+        """Evaluate gradient at point x."""
+        if self._solution_dict is None:
+            self._generate_solution()
+        return self._solution_dict["gradient"](x)
+    
+    def _generate_solution(self):
+        """Generate solution dictionary (to be implemented by subclasses)."""
+        raise NotImplementedError
+
+
+class PolynomialSolution(BaseSolution):
+    """Polynomial manufactured solution."""
+    
+    def _generate_solution(self):
+        self._solution_dict = generate_manufactured_solution(
+            SolutionType.POLYNOMIAL, self.dimension, self.parameters
+        )
+
+
+class TrigonometricSolution(BaseSolution):
+    """Trigonometric manufactured solution."""
+    
+    def _generate_solution(self):
+        self._solution_dict = generate_manufactured_solution(
+            SolutionType.TRIGONOMETRIC, self.dimension, self.parameters
+        )
+
+
+class ExponentialSolution(BaseSolution):
+    """Exponential manufactured solution."""
+    
+    def _generate_solution(self):
+        self._solution_dict = generate_manufactured_solution(
+            SolutionType.EXPONENTIAL, self.dimension, self.parameters
+        )
+
+
+class GaussianSolution(BaseSolution):
+    """Gaussian manufactured solution."""
+    
+    def _generate_solution(self):
+        self._solution_dict = generate_manufactured_solution(
+            SolutionType.GAUSSIAN, self.dimension, self.parameters
+        )
