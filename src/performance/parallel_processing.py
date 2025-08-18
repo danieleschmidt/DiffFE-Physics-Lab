@@ -350,7 +350,11 @@ class ParallelAssemblyEngine:
         chunk_size: str = "auto",
     ):
         self.num_threads = num_threads or min(8, os.cpu_count())
-        self.enable_gpu = enable_gpu and len(jax.devices("gpu")) > 0
+        try:
+            self.enable_gpu = enable_gpu and len(jax.devices("gpu")) > 0
+        except RuntimeError:
+            # No GPU available
+            self.enable_gpu = False
         self.chunk_size = chunk_size
 
         # Thread pool for CPU assembly
@@ -657,7 +661,6 @@ class DistributedComputeManager:
             "memory": psutil.virtual_memory().total,
         }
 
-    @ray.remote
     def _ray_compute_task(
         self, task_func: Callable, task_data: Any, task_id: str
     ) -> TaskResult:

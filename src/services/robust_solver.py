@@ -21,6 +21,7 @@ except ImportError:
     HAS_FIREDRAKE = False
 
 from ..backends.robust_backend import get_robust_backend
+from ..backends import get_backend
 from ..models import Problem
 from ..operators.base import get_operator
 from ..performance.monitor import get_global_monitor
@@ -33,7 +34,28 @@ from ..utils.exceptions import (
 )
 from ..utils.logging_config import PerformanceLogger, get_logger, log_performance
 
-logger = get_logger(__name__)
+# Import basic FEM components
+from .basic_fem_solver import BasicFEMSolver
+from ..utils.mesh import SimpleMesh, SimpleFunctionSpace, create_1d_mesh, create_2d_rectangle_mesh
+from ..utils.fem_assembly import FEMAssembler
+
+# Import robust infrastructure
+from ..robust.error_handling import (
+    DiffFEError, ValidationError, ConvergenceError as RobustConvergenceError, 
+    BackendError, MemoryError as RobustMemoryError, error_context,
+    validate_positive, validate_range
+)
+from ..robust.logging_system import (
+    get_logger as robust_get_logger, global_audit_logger, global_performance_logger
+)
+from ..robust.monitoring import (
+    global_performance_monitor, global_health_checker, resource_monitor
+)
+from ..robust.security import (
+    global_security_validator, global_input_sanitizer, SecurityError
+)
+
+logger = robust_get_logger(__name__)  # Use robust logger
 
 
 @dataclass
@@ -187,13 +209,46 @@ class RobustFEBMLSolver:
         self.memory_limit_mb = memory_limit_mb
         self.timeout_seconds = timeout_seconds
 
-        # Get robust backend
-        self.backend, self.actual_backend = get_robust_backend(backend)
+        # Try robust backend first, fallback to basic backend
+        try:
+            self.backend, self.actual_backend = get_robust_backend(backend)
+            self.use_firedrake = HAS_FIREDRAKE
+        except Exception:
+            logger.warning("Robust backend unavailable, falling back to basic backend")
+            try:
+                self.backend = get_backend(backend)
+                self.actual_backend = backend
+                self.use_firedrake = False
+            except Exception as e:
+                logger.error(f"Basic backend also unavailable: {e}")
+                self.backend = None
+                self.actual_backend = "none"
+                self.use_firedrake = False
+        
         if self.backend is None:
+            # Still try to create a basic solver for fallback
+            logger.warning("No computational backends available, using fallback mode")
+            self.actual_backend = "fallback"
+        
+        # Initialize basic FEM solver as fallback
+        try:
+            self.basic_fem_solver = BasicFEMSolver(
+                backend=backend if self.backend else "numpy", 
+                solver_options=solver_options,
+                enable_monitoring=enable_monitoring
+            )
+            self.has_basic_fem = True
+        except Exception as e:
+            logger.error(f"Failed to initialize basic FEM solver: {e}")
+            self.basic_fem_solver = None
+            self.has_basic_fem = False
+        
+        # At least one solver must be available
+        if self.backend is None and not self.has_basic_fem:
             raise SolverError(
-                "No automatic differentiation backends available",
+                "No computational backends or basic FEM solver available",
                 error_code=ErrorCode.BACKEND_UNAVAILABLE,
-                suggestion="Install JAX or PyTorch for AD support",
+                suggestion="Install JAX, PyTorch, or ensure numpy/scipy are available",
             )
 
         # Initialize monitoring
@@ -221,6 +276,7 @@ class RobustFEBMLSolver:
 
         logger.info(
             f"RobustFEBMLSolver initialized - Backend: {self.actual_backend}, "
+            f"Firedrake: {self.use_firedrake}, BasicFEM: {self.has_basic_fem}, "
             f"Monitoring: {enable_monitoring}, Memory limit: {memory_limit_mb}MB"
         )
 
@@ -427,15 +483,42 @@ class RobustFEBMLSolver:
         metrics: SolverMetrics,
         check_timeout: Callable,
     ) -> Any:
-        """Single solve attempt with monitoring."""
+        """Single solve attempt with monitoring and fallback to basic FEM."""
+        # Try Firedrake first if available
+        if self.use_firedrake and HAS_FIREDRAKE:
+            try:
+                return self._solve_attempt_firedrake(problem, parameters, metrics, check_timeout)
+            except Exception as e:
+                logger.warning(f"Firedrake solve failed: {e}, falling back to basic FEM")
+                if not self.has_basic_fem:
+                    raise
+        
+        # Use basic FEM solver
+        if self.has_basic_fem:
+            return self._solve_attempt_basic_fem(problem, parameters, metrics, check_timeout)
+        
+        # No solvers available
+        raise SolverError(
+            "No FEM solvers available (neither Firedrake nor basic FEM)",
+            error_code=ErrorCode.DEPENDENCY_MISSING,
+            suggestion="Install Firedrake or ensure numpy/scipy are available",
+        )
+    
+    def _solve_attempt_firedrake(
+        self,
+        problem: Problem,
+        parameters: Dict[str, Any],
+        metrics: SolverMetrics,
+        check_timeout: Callable,
+    ) -> Any:
+        """Firedrake-based solve attempt."""
         if not HAS_FIREDRAKE:
             raise SolverError(
-                "Firedrake required for FEM solving",
+                "Firedrake not available",
                 error_code=ErrorCode.DEPENDENCY_MISSING,
-                suggestion="Install Firedrake for finite element computations",
             )
 
-        logger.info("Starting FEM solve")
+        logger.info("Starting Firedrake FEM solve")
 
         # Record initial memory
         metrics.memory_start_mb = psutil.Process().memory_info().rss / (1024 * 1024)
@@ -471,10 +554,131 @@ class RobustFEBMLSolver:
         metrics.memory_end_mb = psutil.Process().memory_info().rss / (1024 * 1024)
 
         logger.info(
-            f"FEM solve completed - DOFs: {metrics.dofs}, Time: {metrics.solve_time:.3f}s"
+            f"Firedrake FEM solve completed - DOFs: {metrics.dofs}, Time: {metrics.solve_time:.3f}s"
         )
 
         return solution
+    
+    def _solve_attempt_basic_fem(
+        self,
+        problem: Problem,
+        parameters: Dict[str, Any],
+        metrics: SolverMetrics,
+        check_timeout: Callable,
+    ) -> Any:
+        """Basic FEM solve attempt with comprehensive monitoring."""
+        logger.info("Starting Basic FEM solve")
+        
+        # Record initial memory
+        metrics.memory_start_mb = psutil.Process().memory_info().rss / (1024 * 1024)
+        
+        try:
+            # Determine problem type from parameters
+            problem_type = parameters.get('problem_type', 'laplace')
+            dimension = parameters.get('dimension', 1)
+            
+            if problem_type == 'laplace' and dimension == 1:
+                # Solve 1D Laplace problem
+                solution_coords, solution_values = self._solve_basic_1d_laplace(parameters, metrics, check_timeout)
+                
+                # Store solution in compatible format
+                solution_data = {
+                    'coordinates': solution_coords,
+                    'values': solution_values,
+                    'dimension': 1,
+                    'problem_type': 'laplace_1d'
+                }
+                
+            elif problem_type == 'laplace' and dimension == 2:
+                # Solve 2D Laplace problem
+                solution_coords, solution_values = self._solve_basic_2d_laplace(parameters, metrics, check_timeout)
+                
+                # Store solution in compatible format
+                solution_data = {
+                    'coordinates': solution_coords,
+                    'values': solution_values,
+                    'dimension': 2,
+                    'problem_type': 'laplace_2d'
+                }
+                
+            else:
+                # Use problem.solve() method if available
+                if hasattr(problem, 'solve') and callable(problem.solve):
+                    solution_data = problem.solve(parameters)
+                else:
+                    raise SolverError(
+                        f"Unsupported problem type for basic FEM: {problem_type} {dimension}D",
+                        error_code=ErrorCode.SOLVER_SETUP_ERROR
+                    )
+            
+            # Update metrics
+            if isinstance(solution_data, dict) and 'values' in solution_data:
+                metrics.dofs = len(solution_data['values'])
+            elif hasattr(solution_data, '__len__'):
+                metrics.dofs = len(solution_data)
+            
+            # Record final memory
+            metrics.memory_end_mb = psutil.Process().memory_info().rss / (1024 * 1024)
+            
+            logger.info(
+                f"Basic FEM solve completed - DOFs: {metrics.dofs}, Time: {metrics.solve_time:.3f}s"
+            )
+            
+            return solution_data
+            
+        except Exception as e:
+            logger.error(f"Basic FEM solve failed: {e}")
+            raise SolverError(
+                f"Basic FEM solve error: {e}",
+                error_code=ErrorCode.SOLVER_CONVERGENCE_FAILED,
+                cause=e
+            )
+    
+    def _solve_basic_1d_laplace(self, parameters: Dict[str, Any], metrics: SolverMetrics, check_timeout: Callable):
+        """Solve 1D Laplace problem using basic FEM."""
+        # Extract parameters with defaults
+        x_start = parameters.get('x_start', 0.0)
+        x_end = parameters.get('x_end', 1.0)
+        num_elements = parameters.get('num_elements', 10)
+        diffusion_coeff = parameters.get('diffusion_coeff', 1.0)
+        source_function = parameters.get('source_function', None)
+        left_bc = parameters.get('left_bc', 0.0)
+        right_bc = parameters.get('right_bc', 1.0)
+        
+        # Check timeout
+        check_timeout()
+        
+        # Solve using basic FEM solver
+        coords, solution = self.basic_fem_solver.solve_1d_laplace(
+            x_start=x_start, x_end=x_end, num_elements=num_elements,
+            diffusion_coeff=diffusion_coeff, source_function=source_function,
+            left_bc=left_bc, right_bc=right_bc
+        )
+        
+        return coords, solution
+    
+    def _solve_basic_2d_laplace(self, parameters: Dict[str, Any], metrics: SolverMetrics, check_timeout: Callable):
+        """Solve 2D Laplace problem using basic FEM."""
+        # Extract parameters with defaults
+        x_range = parameters.get('x_range', (0.0, 1.0))
+        y_range = parameters.get('y_range', (0.0, 1.0))
+        nx = parameters.get('nx', 10)
+        ny = parameters.get('ny', 10)
+        diffusion_coeff = parameters.get('diffusion_coeff', 1.0)
+        source_function = parameters.get('source_function', None)
+        boundary_values = parameters.get('boundary_values', None)
+        
+        # Check timeout
+        check_timeout()
+        
+        # Solve using basic FEM solver
+        coords, solution = self.basic_fem_solver.solve_2d_laplace(
+            x_range=x_range, y_range=y_range, nx=nx, ny=ny,
+            diffusion_coeff=diffusion_coeff, source_function=source_function,
+            boundary_values=boundary_values
+        )
+        
+        return coords, solution
 
     def _solve_linear_monitored(
         self,
