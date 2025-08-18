@@ -2,18 +2,38 @@
 
 This module provides simplified, user-friendly interfaces to the core functionality
 while maintaining compatibility with the existing codebase.
+
+Enhanced with robust error handling, validation, monitoring, and security features.
 """
 
 import logging
+import time
+import traceback
 from typing import Dict, Any, Optional, Callable, List, Union
 from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
+import numpy as np
 
-logger = logging.getLogger(__name__)
+# Import robust infrastructure
+from ..robust.error_handling import (
+    DiffFEError, ValidationError, ConvergenceError, BackendError, MemoryError,
+    error_context, validate_positive, validate_range
+)
+from ..robust.logging_system import (
+    get_logger, log_performance, global_audit_logger, global_performance_logger
+)
+from ..robust.monitoring import (
+    global_performance_monitor, global_health_checker, resource_monitor
+)
+from ..robust.security import (
+    global_security_validator, global_input_sanitizer, SecurityError
+)
+
+logger = get_logger(__name__)
 
 @dataclass
 class ProblemConfig:
-    """Configuration for FEM problems."""
+    """Configuration for FEM problems with robust validation."""
     mesh_size: int = 50
     element_order: int = 1
     backend: str = "numpy"
@@ -21,15 +41,54 @@ class ProblemConfig:
     parallel: bool = False
     gpu_enabled: bool = False
     logging_level: str = "INFO"
+    # Robust configuration options
+    enable_monitoring: bool = True
+    enable_validation: bool = True
+    enable_security_checks: bool = True
+    memory_limit_mb: Optional[int] = 4096
+    timeout_seconds: Optional[float] = 1800
+    max_retries: int = 3
     
     def __post_init__(self):
-        """Validate configuration after initialization."""
-        if self.mesh_size <= 0:
-            raise ValueError("mesh_size must be positive")
-        if self.element_order not in [1, 2, 3]:
-            raise ValueError("element_order must be 1, 2, or 3")
-        if self.backend not in ["numpy", "jax", "torch"]:
-            logger.warning(f"Backend '{self.backend}' may not be fully supported")
+        """Validate configuration after initialization with enhanced checks."""
+        with error_context("ProblemConfig_validation"):
+            # Sanitize string inputs
+            self.backend = global_input_sanitizer.sanitize_string(self.backend)
+            self.precision = global_input_sanitizer.sanitize_string(self.precision)
+            self.logging_level = global_input_sanitizer.sanitize_string(self.logging_level)
+            
+            # Comprehensive validation
+            validate_positive(self.mesh_size, "mesh_size")
+            if self.mesh_size > 100000:
+                logger.warning(f"Large mesh size requested: {self.mesh_size}")
+            
+            validate_range(self.element_order, 1, 3, "element_order")
+            
+            if self.backend not in ["numpy", "jax", "torch"]:
+                logger.warning(f"Backend '{self.backend}' may not be fully supported")
+            
+            if self.precision not in ["float32", "float64"]:
+                raise ValidationError("precision must be 'float32' or 'float64'",
+                                    field="precision", value=self.precision)
+            
+            if self.logging_level not in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
+                logger.warning(f"Unknown logging level '{self.logging_level}', using INFO")
+                self.logging_level = "INFO"
+            
+            # Validate robust options
+            if self.memory_limit_mb is not None:
+                validate_range(self.memory_limit_mb, 100, 100000, "memory_limit_mb")
+            
+            if self.timeout_seconds is not None:
+                validate_range(self.timeout_seconds, 1, 86400, "timeout_seconds")
+            
+            validate_range(self.max_retries, 0, 10, "max_retries")
+            
+            # Log configuration creation
+            global_audit_logger.log_data_operation(
+                "create", "ProblemConfig", 1,
+                mesh_size=self.mesh_size, backend=self.backend
+            )
 
 
 class BaseProblem(ABC):
@@ -174,9 +233,75 @@ class FEBMLProblem(BaseProblem):
     
     def _solve_direct(self, **kwargs):
         """Direct solver implementation."""
-        # Placeholder for actual FEM assembly and solve
         logger.debug("Using direct solver")
-        return {"method": "direct", "config": self.config, "equations": len(self.equations)}
+        
+        # Create a Problem instance for solving
+        from ..models import Problem
+        problem = Problem(backend=self.config.backend)
+        
+        # Add equations
+        for eq_config in self.equations:
+            eq_type = eq_config["type"]
+            eq_params = eq_config["params"]
+            problem.add_equation(eq_type, **eq_params)
+        
+        # Add boundary conditions
+        for bc_name, bc_config in self.boundary_conditions.items():
+            problem.add_boundary_condition(
+                bc_config["type"],
+                bc_config["value"], 
+                bc_config["value"],
+                name=bc_name
+            )
+        
+        # Set mesh parameters based on problem type
+        if self.equations:
+            eq_type = self.equations[0]["type"]
+            if eq_type == "laplacian":
+                # Default mesh parameters
+                mesh_params = {
+                    "dimension": kwargs.get("dimension", 2),
+                    "x_range": kwargs.get("x_range", (0.0, 1.0)),
+                    "y_range": kwargs.get("y_range", (0.0, 1.0)),
+                    "nx": kwargs.get("nx", self.config.mesh_size),
+                    "ny": kwargs.get("ny", self.config.mesh_size),
+                    "x_start": kwargs.get("x_start", 0.0),
+                    "x_end": kwargs.get("x_end", 1.0),
+                    "num_elements": kwargs.get("num_elements", self.config.mesh_size)
+                }
+                problem.set_mesh_parameters(**mesh_params)
+        
+        # Set other parameters
+        problem.set_parameter("diffusion_coeff", kwargs.get("diffusion_coeff", 1.0))
+        if "source_function" in kwargs:
+            problem.set_parameter("source_function", kwargs["source_function"])
+        
+        # Solve the problem
+        try:
+            solution = problem.solve()
+            if isinstance(solution, np.ndarray):
+                return {
+                    "method": "direct",
+                    "solution": solution,
+                    "success": True,
+                    "num_dofs": len(solution),
+                    "equations": len(self.equations)
+                }
+            else:
+                return {
+                    "method": "direct", 
+                    "solution": solution,
+                    "success": True,
+                    "equations": len(self.equations)
+                }
+        except Exception as e:
+            logger.error(f"Direct solver failed: {e}")
+            return {
+                "method": "direct",
+                "success": False,
+                "error": str(e),
+                "equations": len(self.equations)
+            }
     
     def _solve_iterative(self, **kwargs):
         """Iterative solver implementation."""
@@ -427,13 +552,14 @@ def create_problem(problem_type: str = "febml", **config_kwargs) -> BaseProblem:
 
 
 def quick_solve(equation: str, boundary_conditions: Dict[str, Any], 
-                mesh_size: int = 50, **kwargs) -> Any:
+                mesh_size: int = 50, dimension: int = 1, **kwargs) -> Any:
     """Quick solve for simple problems.
     
     Args:
         equation: Physics equation name
         boundary_conditions: Dictionary of boundary conditions
         mesh_size: Mesh resolution
+        dimension: Problem dimension (1 or 2)
         **kwargs: Additional parameters
         
     Returns:
@@ -441,14 +567,20 @@ def quick_solve(equation: str, boundary_conditions: Dict[str, Any],
         
     Examples:
         >>> solution = quick_solve("laplacian", {"left": 0, "right": 1}, mesh_size=100)
+        >>> solution_2d = quick_solve("laplacian", {"left": 0, "right": 1, "bottom": 0, "top": 0}, 
+        ...                          mesh_size=20, dimension=2)
     """
     # Create and configure problem
-    problem = FEBMLProblem(ProblemConfig(mesh_size=mesh_size))
+    config = ProblemConfig(mesh_size=mesh_size, backend="numpy")
+    problem = FEBMLProblem(config)
     problem.add_equation(equation, **kwargs)
     
     # Set boundary conditions
     for boundary, value in boundary_conditions.items():
         problem.set_boundary_condition(boundary, "dirichlet", value)
     
-    # Solve
-    return problem.solve()
+    # Set dimension and mesh parameters
+    problem._is_solved = False  # Reset solve state
+    
+    # Solve with dimension parameter
+    return problem.solve(dimension=dimension, **kwargs)

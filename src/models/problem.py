@@ -69,15 +69,17 @@ class Problem:
         if function_space is not None:
             validate_function_space(function_space)
 
-    def add_equation(self, equation: Callable, name: str = None) -> "Problem":
+    def add_equation(self, equation: Union[Callable, str], name: str = None, **equation_params) -> "Problem":
         """Add a physics equation to the problem.
 
         Parameters
         ----------
-        equation : Callable
-            Function defining the weak form
+        equation : Callable or str
+            Function defining the weak form or equation type name
         name : str, optional
             Name for the equation
+        **equation_params
+            Additional equation parameters
 
         Returns
         -------
@@ -85,7 +87,25 @@ class Problem:
             Self for method chaining
         """
         eq_name = name or f"equation_{len(self.equations)}"
-        self.equations.append({"name": eq_name, "equation": equation, "active": True})
+        
+        if isinstance(equation, str):
+            # String-based equation specification
+            eq_data = {
+                "name": eq_name, 
+                "type": equation, 
+                "active": True,
+                "params": equation_params
+            }
+        else:
+            # Function-based equation
+            eq_data = {
+                "name": eq_name, 
+                "equation": equation, 
+                "active": True,
+                "params": equation_params
+            }
+        
+        self.equations.append(eq_data)
         return self
 
     def add_boundary_condition(
@@ -140,6 +160,24 @@ class Problem:
         self.parameters[name] = value
         return self
 
+    def set_mesh_parameters(self, **mesh_params) -> "Problem":
+        """Set mesh parameters for basic FEM.
+        
+        Parameters
+        ----------
+        **mesh_params
+            Mesh parameters (dimension, x_range, y_range, nx, ny, etc.)
+            
+        Returns
+        -------
+        Problem
+            Self for method chaining
+        """
+        if "mesh" not in self.parameters:
+            self.parameters["mesh"] = {}
+        self.parameters["mesh"].update(mesh_params)
+        return self
+
     def solve(self, parameters: Dict[str, Any] = None) -> Any:
         """Solve the finite element problem.
 
@@ -151,20 +189,24 @@ class Problem:
         Returns
         -------
         Any
-            Solution field
+            Solution field or numpy array
         """
-        if not HAS_FIREDRAKE:
-            raise RuntimeError("Firedrake required for FEM solve")
-
         # Merge runtime parameters
         solve_params = {**self.parameters}
         if parameters:
             solve_params.update(parameters)
 
-        # Create function for solution
-        if self.function_space is None:
-            raise ValueError("Function space must be defined before solving")
+        # Try Firedrake first if available and properly configured
+        if (HAS_FIREDRAKE and 
+            hasattr(self, 'function_space') and 
+            self.function_space is not None):
+            return self._solve_with_firedrake(solve_params)
+        else:
+            return self._solve_with_basic_fem(solve_params)
 
+    def _solve_with_firedrake(self, solve_params: Dict[str, Any]) -> Any:
+        """Solve using Firedrake."""
+        # Create function for solution
         u = fd.Function(self.function_space)
         v = fd.TestFunction(self.function_space)
 
@@ -182,6 +224,106 @@ class Problem:
 
         self.solution = u
         return u
+
+    def _solve_with_basic_fem(self, solve_params: Dict[str, Any]) -> np.ndarray:
+        """Solve using basic FEM implementation."""
+        from ..services.basic_fem_solver import BasicFEMSolver
+        
+        # Create basic FEM solver
+        solver = BasicFEMSolver(backend=self.backend_name)
+        
+        # Determine problem type from equations
+        problem_type = self._determine_problem_type()
+        
+        if problem_type == "laplace_1d":
+            return self._solve_laplace_1d(solver, solve_params)
+        elif problem_type == "laplace_2d":
+            return self._solve_laplace_2d(solver, solve_params)
+        else:
+            # Use generic solver
+            solution = solver.solve_problem(self, solve_params)
+            self.solution = solution
+            return solution
+
+    def _determine_problem_type(self) -> str:
+        """Determine the type of problem from equations."""
+        if not self.equations:
+            return "unknown"
+            
+        # Check first equation type
+        first_eq = self.equations[0]
+        eq_type = first_eq.get("type", "unknown")
+        
+        if eq_type == "laplacian":
+            # Determine dimension from parameters
+            mesh_params = self.parameters.get("mesh", {})
+            dimension = mesh_params.get("dimension", 1)
+            return f"laplace_{dimension}d"
+        
+        return "unknown"
+
+    def _solve_laplace_1d(self, solver: 'BasicFEMSolver', params: Dict[str, Any]) -> np.ndarray:
+        """Solve 1D Laplace equation."""
+        # Extract parameters
+        mesh_params = params.get("mesh", {})
+        x_start = mesh_params.get("x_start", 0.0)
+        x_end = mesh_params.get("x_end", 1.0)
+        num_elements = mesh_params.get("num_elements", 10)
+        
+        diffusion_coeff = params.get("diffusion_coeff", 1.0)
+        source_function = params.get("source_function", None)
+        
+        # Get boundary conditions
+        left_bc = 0.0
+        right_bc = 1.0
+        
+        for bc_name, bc_data in self.boundary_conditions.items():
+            if bc_data["type"] == "dirichlet":
+                if "left" in bc_name.lower():
+                    left_bc = bc_data["value"]
+                elif "right" in bc_name.lower():
+                    right_bc = bc_data["value"]
+        
+        # Solve
+        nodes, solution = solver.solve_1d_laplace(
+            x_start=x_start, x_end=x_end, num_elements=num_elements,
+            diffusion_coeff=diffusion_coeff, source_function=source_function,
+            left_bc=left_bc, right_bc=right_bc
+        )
+        
+        self.solution = solution
+        return solution
+
+    def _solve_laplace_2d(self, solver: 'BasicFEMSolver', params: Dict[str, Any]) -> np.ndarray:
+        """Solve 2D Laplace equation."""
+        # Extract parameters
+        mesh_params = params.get("mesh", {})
+        x_range = mesh_params.get("x_range", (0.0, 1.0))
+        y_range = mesh_params.get("y_range", (0.0, 1.0))
+        nx = mesh_params.get("nx", 10)
+        ny = mesh_params.get("ny", 10)
+        
+        diffusion_coeff = params.get("diffusion_coeff", 1.0)
+        source_function = params.get("source_function", None)
+        
+        # Get boundary conditions
+        boundary_values = {"left": 0.0, "right": 1.0, "bottom": 0.0, "top": 0.0}
+        
+        for bc_name, bc_data in self.boundary_conditions.items():
+            if bc_data["type"] == "dirichlet":
+                boundary_name = bc_data.get("boundary", bc_name)
+                if isinstance(boundary_name, str) and boundary_name in boundary_values:
+                    boundary_values[boundary_name] = bc_data["value"]
+        
+        # Solve
+        nodes, solution = solver.solve_2d_laplace(
+            x_range=x_range, y_range=y_range, nx=nx, ny=ny,
+            diffusion_coeff=diffusion_coeff, source_function=source_function,
+            boundary_values=boundary_values
+        )
+        
+        self.solution = solution
+        return solution
 
     def _assemble_boundary_conditions(self) -> List:
         """Convert boundary condition definitions to Firedrake BCs."""
