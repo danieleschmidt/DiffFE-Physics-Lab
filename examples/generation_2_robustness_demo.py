@@ -15,12 +15,12 @@ import os
 from typing import Dict, Any, List
 
 # Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from services.robust_optimization import RobustOptimizationService, OptimizationStatus
-from services.enhanced_fem_solver import EnhancedFEMSolver
-from robust.error_handling import ValidationError, ConvergenceError
-from robust.logging_system import get_logger
+from src.services.robust_optimization import RobustOptimizationService, OptimizationStatus
+from src.services.enhanced_fem_solver import EnhancedFEMSolver
+from src.robust.error_handling import ValidationError, ConvergenceError
+from src.robust.logging_system import get_logger
 
 logger = get_logger(__name__)
 

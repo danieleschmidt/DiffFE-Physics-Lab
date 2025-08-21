@@ -33,6 +33,21 @@ class DiffFEError(Exception):
             logger.debug(f"Error context: {context}")
 
 
+class SecurityError(DiffFEError):
+    """Security-related error."""
+    
+    def __init__(self, message: str, security_level: str = "high", **kwargs):
+        """Initialize security error.
+        
+        Args:
+            message: Error message
+            security_level: Severity level (low, medium, high, critical)
+            **kwargs: Additional context
+        """
+        super().__init__(message, error_code="SECURITY_VIOLATION", 
+                         context={"security_level": security_level, **kwargs})
+
+
 class ValidationError(DiffFEError):
     """Error in input validation or problem setup."""
     
@@ -127,6 +142,25 @@ class MemoryError(DiffFEError):
         super().__init__(message, "DIFFHE_MEMORY", context)
         self.memory_used = memory_used
         self.memory_limit = memory_limit
+
+
+class TimeoutError(DiffFEError):
+    """Timeout-related errors."""
+    
+    def __init__(self, message: str, timeout_duration: Optional[float] = None, **kwargs):
+        """Initialize timeout error.
+        
+        Args:
+            message: Error message
+            timeout_duration: Timeout duration in seconds
+            **kwargs: Additional context
+        """
+        context = kwargs
+        if timeout_duration is not None:
+            context["timeout_duration"] = timeout_duration
+        
+        super().__init__(message, "DIFFHE_TIMEOUT", context)
+        self.timeout_duration = timeout_duration
 
 
 def robust_execute(func: Callable, *args, max_retries: int = 3, 
