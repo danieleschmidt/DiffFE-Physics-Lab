@@ -1,33 +1,67 @@
-"""Enhanced API layer for DiffFE-Physics-Lab.
+"""Enhanced API layer for DiffFE-Physics-Lab v4.0.
 
 This module provides simplified, user-friendly interfaces to the core functionality
 while maintaining compatibility with the existing codebase.
 
-Enhanced with robust error handling, validation, monitoring, and security features.
+Enhanced with robust error handling, validation, monitoring, security features,
+and Generation 1+ autonomous functionality improvements.
 """
 
 import logging
 import time
 import traceback
-from typing import Dict, Any, Optional, Callable, List, Union
+import asyncio
+from typing import Dict, Any, Optional, Callable, List, Union, Tuple
 from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
 import numpy as np
+import sys
+from pathlib import Path
 
-# Import robust infrastructure
-from ..robust.error_handling import (
-    DiffFEError, ValidationError, ConvergenceError, BackendError, MemoryError,
-    error_context, validate_positive, validate_range
-)
-from ..robust.logging_system import (
-    get_logger, log_performance, global_audit_logger, global_performance_logger
-)
-from ..robust.monitoring import (
-    global_performance_monitor, global_health_checker, resource_monitor
-)
-from ..robust.security import (
-    global_security_validator, global_input_sanitizer, SecurityError
-)
+# Safe imports with fallbacks for robust operation
+try:
+    # Import robust infrastructure
+    from ..robust.error_handling import (
+        DiffFEError, ValidationError, ConvergenceError, BackendError, MemoryError,
+        error_context, validate_positive, validate_range
+    )
+    from ..robust.logging_system import (
+        get_logger, log_performance, global_audit_logger, global_performance_logger
+    )
+    from ..robust.monitoring import (
+        global_performance_monitor, global_health_checker, resource_monitor
+    )
+    from ..robust.security import (
+        global_security_validator, global_input_sanitizer, SecurityError
+    )
+except ImportError as e:
+    print(f"Warning: Some robust modules not available: {e}")
+    # Fallback implementations
+    class DiffFEError(Exception): pass
+    class ValidationError(Exception): pass
+    class ConvergenceError(Exception): pass
+    class BackendError(Exception): pass
+    class MemoryError(Exception): pass
+    class SecurityError(Exception): pass
+    
+    def error_context(context_name):
+        class ContextManager:
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+        return ContextManager()
+    
+    def validate_positive(value, name): 
+        if value <= 0: raise ValidationError(f"{name} must be positive")
+    
+    def validate_range(value, min_val, max_val, name):
+        if not min_val <= value <= max_val:
+            raise ValidationError(f"{name} must be between {min_val} and {max_val}")
+    
+    # Simple logger fallback
+    def get_logger(name): return logging.getLogger(name)
+    global_audit_logger = type('MockLogger', (), {'log_data_operation': lambda *args, **kwargs: None})()
+    global_input_sanitizer = type('MockSanitizer', (), {'sanitize_string': lambda self, x: str(x)})()
+    log_performance = lambda *args, **kwargs: lambda f: f
 
 logger = get_logger(__name__)
 
