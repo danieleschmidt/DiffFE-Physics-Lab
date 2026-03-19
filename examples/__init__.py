@@ -1,1 +1,0 @@
-"""Example applications demonstrating DiffFE-Physics-Lab capabilities."""
